@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Været i Halden</title>
+<style>
+:root{--bg:#eef2f7;--ink:#14213d;--muted:#5d6b82;--card:#fff;--line:#dde4ee;--blue:#1b6ef3;--cloud:#9fb2c8;--drop:#2f80ed;--flake:#7aa7d9;--moon:#8aa0c0}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--ink);font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;min-height:100vh}
+.top{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding:18px clamp(16px,4vw,48px);background:var(--card);border-bottom:1px solid var(--line)}
+nav{display:flex;gap:8px}
+nav a{text-decoration:none;color:var(--muted);padding:8px 18px;border-radius:999px;font-weight:600}
+nav a[aria-current]{background:var(--blue);color:#fff}
+.time{text-align:right}
+#clock{font-size:1.6rem;font-weight:700;font-variant-numeric:tabular-nums}
+#date{color:var(--muted);font-size:.9rem;text-transform:capitalize}
+main{max-width:1100px;margin:0 auto;padding:clamp(16px,4vw,40px);display:grid;gap:20px}
+h1{margin:0;font-size:clamp(1.5rem,3vw,2.2rem)}
+.sub{color:var(--muted);margin-top:4px}
+.banner{background:#fff4d6;border:1px solid #f0d58a;color:#6b5100;padding:12px 16px;border-radius:12px;font-size:.95rem}
+.hero{border-radius:24px;padding:clamp(24px,4vw,48px);color:#fff;display:grid;grid-template-columns:auto 1fr;gap:clamp(16px,4vw,48px);align-items:center;--cloud:#fff;--drop:#bfe3ff;--flake:#fff;--moon:#e6ecf8}
+.temp{font-size:clamp(4.5rem,11vw,9rem);font-weight:700;line-height:.95}
+.cond{font-size:clamp(1.2rem,2.2vw,1.8rem);opacity:.92;margin-top:8px}
+.facts{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:8px}
+.fact{background:rgba(255,255,255,.16);border-radius:14px;padding:12px 16px}
+.fact span{display:block;font-size:.85rem;opacity:.85}
+.fact b{font-size:1.3rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:clamp(16px,3vw,28px)}
+h2{margin:0 0 14px;font-size:1.1rem}
+.hours{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:10px}
+.hour{text-align:center;padding:12px 4px;border-radius:14px;background:var(--bg)}
+.hour .t{color:var(--muted);font-size:.9rem}
+.hour svg{margin:6px 0}
+.hour .d{font-weight:700;font-size:1.2rem}
+.hour .r{color:var(--blue);font-size:.8rem;min-height:1.1em}
+footer{color:var(--muted);font-size:.85rem}
+.sunny{background:linear-gradient(135deg,#1b6ef3,#4fc3f7)}
+.grey{background:linear-gradient(135deg,#60738f,#9db0c6)}
+.wet{background:linear-gradient(135deg,#34445f,#5b7090)}
+.snowy{background:linear-gradient(135deg,#6f86a6,#b8c9dc)}
+.night{background:linear-gradient(135deg,#111a3a,#2e3f78)}
+@media (max-width:700px){.hero{grid-template-columns:1fr}.time{text-align:left}}
+</style>
+</head>
+<body>
+<div class="top">
+  <nav aria-label="Sider"><a href="weather.html" aria-current="page">Vær</a><a href="bus.html">Reise</a></nav>
+  <div class="time"><div id="clock">--:--</div><div id="date"></div></div>
+</div>
+<main>
+  <div><h1>Været i Halden</h1><div class="sub" id="updated"></div></div>
+  <div id="banner"></div>
+  <div id="content"><div class="card">Henter værdata …</div></div>
+  <footer>Data: MET Norway (Yr). Oppdateres hvert 15. minutt.</footer>
+</main>
+
+<script>
+var LAT = 59.1229, LON = 11.3875;   // Halden
+
+var $ = function (id) { return document.getElementById(id); };
+var pad = function (n) { return String(n).padStart(2, "0"); };
+function tick() {
+  var d = new Date();
+  $("clock").textContent = pad(d.getHours()) + ":" + pad(d.getMinutes());
+  $("date").textContent = d.toLocaleDateString("nb-NO", { weekday: "long", day: "numeric", month: "long" });
+}
+tick(); setInterval(tick, 10000);
+
+// ---- Icons ----
+var CLOUD = '<path d="M20 48h24a10 10 0 0 0 1-20 14 14 0 0 0-27 4 8 8 0 0 0 2 16z" fill="var(--cloud)"/>';
+var SUN = '<circle cx="32" cy="32" r="10" fill="#ffc933"/><path d="M32 8v6M32 50v6M8 32h6M50 32h6M15 15l4 4M45 45l4 4M49 15l-4 4M19 45l-4 4" stroke="#ffc933" stroke-width="3" stroke-linecap="round"/>';
+var UP = function (s) { return '<g transform="translate(0 -9)">' + s + '</g>'; };
+var DROPS = '<path d="M23 48l-3 8M33 48l-3 8M43 48l-3 8" stroke="var(--drop)" stroke-width="3" stroke-linecap="round"/>';
+var ICON = {
+  sun: SUN,
+  moon: '<path d="M44 42a17 17 0 0 1-20-26 19 19 0 1 0 20 26z" fill="var(--moon)"/>',
+  partly: '<g transform="translate(-8 -10) scale(.75)">' + SUN + '</g><g transform="translate(4 2)">' + CLOUD + '</g>',
+  cloud: CLOUD,
+  rain: UP(CLOUD) + DROPS,
+  snow: UP(CLOUD) + '<g fill="var(--flake)"><circle cx="22" cy="52" r="2.5"/><circle cx="32" cy="55" r="2.5"/><circle cx="42" cy="52" r="2.5"/></g>',
+  sleet: UP(CLOUD) + '<path d="M23 48l-3 8M43 48l-3 8" stroke="var(--drop)" stroke-width="3" stroke-linecap="round"/><circle cx="32" cy="54" r="2.5" fill="var(--flake)"/>',
+  thunder: UP(CLOUD) + '<path d="M34 42l-8 11h6l-3 9 10-13h-6z" fill="#ffc933"/>',
+  fog: UP(CLOUD) + '<path d="M16 50h32M20 57h24" stroke="var(--cloud)" stroke-width="3" stroke-linecap="round"/>'
+};
+function weatherOf(code) {
+  var night = /_night$/.test(code || "");
+  var b = (code || "").replace(/_(day|night|polartwilight)$/, "");
+  var q = /^heavy/.test(b) ? "Kraftig " : /^light/.test(b) ? "Lett " : "";
+  var sh = /showers/.test(b);
+  if (/thunder/.test(b)) return ["thunder", "Tordenvær", "wet", night];
+  if (/sleet/.test(b)) return ["sleet", q + (sh ? "sluddbyger" : "sludd"), "snowy", night];
+  if (/snow/.test(b)) return ["snow", q + (sh ? "snøbyger" : "snø"), "snowy", night];
+  if (/rain/.test(b)) return ["rain", q + (sh ? "regnbyger" : "regn"), "wet", night];
+  if (b === "fog") return ["fog", "Tåke", "grey", night];
+  if (b === "clearsky") return [night ? "moon" : "sun", "Klarvær", "sunny", night];
+  if (b === "fair") return [night ? "moon" : "partly", "Lettskyet", "sunny", night];
+  if (b === "partlycloudy") return ["partly", "Delvis skyet", "sunny", night];
+  return ["cloud", "Skyet", "grey", night];
+}
+function svg(k, s) { return '<svg viewBox="0 0 64 64" width="' + s + '" height="' + s + '" aria-hidden="true">' + ICON[k] + '</svg>'; }
+function codeOf(e) { return ((e.data.next_1_hours || e.data.next_6_hours || {}).summary || {}).symbol_code; }
+function compass(d) { return ["N", "NØ", "Ø", "SØ", "S", "SV", "V", "NV"][Math.round(d / 45) % 8]; }
+function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+// ---- Sample data, shown only if the live data cannot be reached ----
+function demo() {
+  var codes = ["partlycloudy_day", "partlycloudy_day", "cloudy", "lightrain", "rain", "lightrainshowers_day", "fair_day", "clearsky_day"];
+  var ts = [];
+  for (var i = 0; i < 16; i++) {
+    ts.push({ time: new Date(Date.now() + i * 3600e3).toISOString(), data: {
+      instant: { details: { air_temperature: 7 - Math.abs(i - 5) * 0.4, wind_speed: 3.4, wind_from_direction: 225, relative_humidity: 78, air_pressure_at_sea_level: 1012 } },
+      next_1_hours: { summary: { symbol_code: codes[Math.floor(i / 2) % codes.length] }, details: { precipitation_amount: i % 5 === 3 ? 0.6 : 0 } } } });
+  }
+  return { properties: { timeseries: ts } };
+}
+
+function render(data) {
+  var ts = data.properties.timeseries, now = ts[0], d = now.data.instant.details;
+  var w = weatherOf(codeOf(now)), cls = w[3] ? "night" : w[2];
+  var rain = now.data.next_1_hours ? now.data.next_1_hours.details.precipitation_amount : 0;
+  var html = '<div class="hero ' + cls + '">' + svg(w[0], 150) + '<div><div class="temp">' + Math.round(d.air_temperature) +
+    '°</div><div class="cond">' + cap(w[1]) + '</div></div><div class="facts">' +
+    '<div class="fact"><span>Vind</span><b>' + Math.round(d.wind_speed) + ' m/s ' + compass(d.wind_from_direction) + '</b></div>' +
+    '<div class="fact"><span>Nedbør neste time</span><b>' + rain + ' mm</b></div>' +
+    '<div class="fact"><span>Luftfuktighet</span><b>' + Math.round(d.relative_humidity) + ' %</b></div>' +
+    '<div class="fact"><span>Lufttrykk</span><b>' + Math.round(d.air_pressure_at_sea_level) + ' hPa</b></div></div></div>' +
+    '<div class="card" style="margin-top:20px"><h2>Neste timer</h2><div class="hours">';
+  for (var i = 2; i <= 14; i += 2) {
+    var h = ts[i], t = new Date(h.time), hw = weatherOf(codeOf(h));
+    var p = h.data.next_1_hours ? h.data.next_1_hours.details.precipitation_amount : 0;
+    html += '<div class="hour"><div class="t">' + pad(t.getHours()) + ':00</div>' + svg(hw[0], 44) + '<div class="d">' +
+      Math.round(h.data.instant.details.air_temperature) + '°</div><div class="r">' + (p > 0 ? p + ' mm' : '') + '</div></div>';
+  }
+  $("content").innerHTML = html + '</div></div>';
+  var u = new Date();
+  $("updated").textContent = "Sist oppdatert " + pad(u.getHours()) + ":" + pad(u.getMinutes());
+}
+
+function load() {
+  fetch("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=" + LAT + "&lon=" + LON)
+    .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(function (data) { $("banner").innerHTML = ""; render(data); })
+    .catch(function (e) {
+      $("banner").innerHTML = '<div class="banner">Viser eksempeldata. Kunne ikke hente live vær fra Yr (' + e.message +
+        '). Åpne siden lokalt eller fra GitHub Pages med internett for ekte data.</div>';
+      render(demo());
+    });
+}
+load(); setInterval(load, 15 * 60 * 1000);
+</script>
+</body>
+</html>

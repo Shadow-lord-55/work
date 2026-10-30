@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Halden – Oslo</title>
+<style>
+:root{--bg:#eef2f7;--ink:#14213d;--muted:#5d6b82;--card:#fff;--line:#dde4ee;--blue:#1b6ef3;--green:#12945a}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--ink);font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;min-height:100vh}
+.top{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding:18px clamp(16px,4vw,48px);background:var(--card);border-bottom:1px solid var(--line)}
+nav{display:flex;gap:8px}
+nav a{text-decoration:none;color:var(--muted);padding:8px 18px;border-radius:999px;font-weight:600}
+nav a[aria-current]{background:var(--blue);color:#fff}
+.time{text-align:right}
+#clock{font-size:1.6rem;font-weight:700;font-variant-numeric:tabular-nums}
+#date{color:var(--muted);font-size:.9rem;text-transform:capitalize}
+main{max-width:1100px;margin:0 auto;padding:clamp(16px,4vw,40px);display:grid;gap:20px}
+h1{margin:0;font-size:clamp(1.5rem,3vw,2.2rem)}
+.sub{color:var(--muted);margin-top:4px}
+.banner{background:#fff4d6;border:1px solid #f0d58a;color:#6b5100;padding:12px 16px;border-radius:12px;font-size:.95rem}
+.next{background:linear-gradient(135deg,#1b6ef3,#4fc3f7);color:#fff;border-radius:24px;padding:clamp(24px,4vw,44px);display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
+.next small{display:block;opacity:.85;font-size:1rem;margin-bottom:6px}
+.big{font-size:clamp(3rem,8vw,6rem);font-weight:700;line-height:1}
+.nt{font-size:clamp(1.3rem,2.6vw,2rem);font-variant-numeric:tabular-nums}
+.nt span{display:block;opacity:.85;font-size:.6em;margin-top:6px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;overflow:hidden}
+.row{display:grid;grid-template-columns:minmax(110px,1fr) minmax(170px,1.4fr) minmax(150px,1fr) 110px;gap:16px;align-items:center;padding:16px clamp(16px,3vw,28px);border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.lines{display:flex;gap:6px;flex-wrap:wrap}
+.line{background:var(--blue);color:#fff;font-weight:700;padding:4px 12px;border-radius:999px}
+.clk{font-size:1.25rem;font-weight:700;font-variant-numeric:tabular-nums}
+.clk i{font-style:normal;color:var(--muted);margin:0 8px;font-weight:400}
+.meta{color:var(--muted)}
+.when{text-align:right;font-weight:700;font-size:1.15rem;font-variant-numeric:tabular-nums}
+.live{color:var(--green)}
+.late{display:block;color:var(--muted);font-size:.75rem;font-weight:400}
+.pad{padding:24px}
+footer{color:var(--muted);font-size:.85rem}
+@media (max-width:700px){.time{text-align:left}.row{grid-template-columns:1fr auto}.lines{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<div class="top">
+  <nav aria-label="Sider"><a href="weather.html">Vær</a><a href="bus.html" aria-current="page">Reise</a></nav>
+  <div class="time"><div id="clock">--:--</div><div id="date"></div></div>
+</div>
+<main>
+  <div><h1 id="title">Halden → Oslo</h1><div class="sub" id="updated"></div></div>
+  <div id="banner"></div>
+  <div id="content"><div class="card pad">Henter avganger …</div></div>
+  <footer>Data: Entur. Grønn tid betyr sanntid. Oppdateres hvert minutt.</footer>
+</main>
+
+<script>
+// ---- Settings ----
+var FROM = { search: "Halden stasjon", lat: 59.1235, lon: 11.3875 };
+var TO   = { search: "Oslo S",          lat: 59.9110, lon: 10.7528 };
+var ONLY_BUS = false;                 // true = only buses (no trains)
+var CLIENT_NAME = "workshop-halden-oslo";
+
+var $ = function (id) { return document.getElementById(id); };
+var pad = function (n) { return String(n).padStart(2, "0"); };
+var hm = function (iso) { var d = new Date(iso); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
+function tick() {
+  var d = new Date();
+  $("clock").textContent = pad(d.getHours()) + ":" + pad(d.getMinutes());
+  $("date").textContent = d.toLocaleDateString("nb-NO", { weekday: "long", day: "numeric", month: "long" });
+}
+tick(); setInterval(tick, 10000);
+
+// ---- Sample data, shown only if the live data cannot be reached ----
+function demo() {
+  var out = [];
+  for (var i = 0; i < 8; i++) {
+    var s = Date.now() + (12 + i * 28) * 60000;
+    out.push({ aimedStartTime: new Date(s - (i === 2 ? 4 * 60000 : 0)).toISOString(), expectedStartTime: new Date(s).toISOString(),
+      expectedEndTime: new Date(s + 98 * 60000).toISOString(), duration: 98 * 60,
+      legs: [{ mode: "rail", realtime: i % 3 !== 1, line: { publicCode: "R21" } }] });
+  }
+  return out;
+}
+
+// ---- Entur ----
+var HEAD = { "ET-Client-Name": CLIENT_NAME };
+var places = null;
+function coords(p) { return "coordinates: { latitude: " + p.lat + ", longitude: " + p.lon + " }"; }
+function findPlace(p) {
+  var url = "https://api.entur.io/geocoder/v1/autocomplete?size=3&layers=venue&text=" + encodeURIComponent(p.search);
+  return fetch(url, { headers: HEAD }).then(function (r) { return r.json(); }).then(function (g) {
+    var f = (g.features || []).filter(function (x) { return /^NSR:StopPlace:/.test(x.properties.id); })[0];
+    return f ? { loc: 'place: "' + f.properties.id + '"', name: f.properties.name } : { loc: coords(p), name: p.search };
+  }).catch(function () { return { loc: coords(p), name: p.search }; });
+}
+function buildQuery() {
+  var modes = ONLY_BUS ? ", modes: { transportModes: [{ transportMode: bus }] }" : "";
+  return "{ trip(from: { " + places.from.loc + " }, to: { " + places.to.loc + " }, numTripPatterns: 8" + modes + ") {" +
+    " tripPatterns { aimedStartTime expectedStartTime expectedEndTime duration legs { mode realtime line { publicCode } } } } }";
+}
+
+function info(t) {
+  var mins = Math.round((new Date(t.expectedStartTime) - Date.now()) / 60000);
+  var transit = t.legs.filter(function (l) { return l.mode !== "foot"; });
+  var dur = Math.round(t.duration / 60), h = Math.floor(dur / 60), m = dur % 60;
+  return {
+    when: mins <= 0 ? "Nå" : mins < 60 ? mins + " min" : hm(t.expectedStartTime),
+    late: Math.abs(new Date(t.expectedStartTime) - new Date(t.aimedStartTime)) > 60000,
+    live: transit.some(function (l) { return l.realtime; }),
+    lines: transit.map(function (l) {
+      var n = l.line && l.line.publicCode ? l.line.publicCode : (l.mode === "bus" ? "Buss" : l.mode === "rail" ? "Tog" : l.mode);
+      return '<span class="line">' + n + '</span>';
+    }).join(""),
+    dur: (h ? h + " t " : "") + m + " min",
+    changes: transit.length > 1 ? (transit.length - 1) + (transit.length === 2 ? " bytte" : " bytter") : "Direkte"
+  };
+}
+function render(list) {
+  if (!list.length) { $("content").innerHTML = '<div class="card pad">Fant ingen reiser akkurat nå.</div>'; return; }
+  var a = list[0], x = info(a);
+  var html = '<div class="next"><div><small>Neste avgang</small><div class="big">' + x.when + '</div></div>' +
+    '<div class="nt">' + hm(a.expectedStartTime) + ' → ' + hm(a.expectedEndTime) + '<span>' + x.dur + ' · ' + x.changes + '</span></div></div>' +
+    '<div class="card" style="margin-top:20px">';
+  list.slice(1).forEach(function (t) {
+    var y = info(t);
+    html += '<div class="row"><div class="lines">' + y.lines + '</div><div class="clk">' + hm(t.expectedStartTime) + '<i>→</i>' +
+      hm(t.expectedEndTime) + '</div><div class="meta">' + y.dur + ' · ' + y.changes + '</div><div class="when' + (y.live ? " live" : "") + '">' +
+      y.when + (y.late ? '<span class="late">rutetid ' + hm(t.aimedStartTime) + '</span>' : '') + '</div></div>';
+  });
+  $("content").innerHTML = html + '</div>';
+  var u = new Date();
+  $("updated").textContent = "Sist oppdatert " + pad(u.getHours()) + ":" + pad(u.getMinutes());
+}
+
+function load() {
+  (places ? Promise.resolve() : Promise.all([findPlace(FROM), findPlace(TO)]).then(function (p) {
+    places = { from: p[0], to: p[1] };
+    $("title").textContent = p[0].name + " → " + p[1].name;
+  }))
+    .then(function () {
+      return fetch("https://api.entur.io/journey-planner/v3/graphql", { method: "POST",
+        headers: { "Content-Type": "application/json", "ET-Client-Name": CLIENT_NAME }, body: JSON.stringify({ query: buildQuery() }) });
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (res) {
+      if (res.errors && res.errors.length) throw new Error(res.errors[0].message);
+      $("banner").innerHTML = "";
+      render(res.data.trip.tripPatterns);
+    })
+    .catch(function (e) {
+      console.error(e);
+      $("banner").innerHTML = '<div class="banner">Viser eksempeldata. Kunne ikke hente live reiser fra Entur (' + e.message +
+        '). Åpne siden lokalt eller fra GitHub Pages med internett for ekte data.</div>';
+      render(demo());
+    });
+}
+load(); setInterval(load, 60 * 1000);
+</script>
+</body>
+</html>
